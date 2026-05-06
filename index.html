@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenShift Container Platform POC - Prereqs</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* Custom print styles to ensure colors print correctly if user enables background graphics */
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- Inline SVG Icons (Replaces lucide-react dependencies) ---
+        const ChevronDown = ({ size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        );
+        const ChevronUp = ({ size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+        );
+        const Printer = ({ size = 18, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+        );
+        const Trash2 = ({ size = 18, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        );
+        const Save = ({ size = 14, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        );
+        const ShieldAlert = ({ className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+        );
+
+        // --- Default Configuration & Data Structure ---
+        const DEFAULT_FILTERS = {
+            installType: { ipi: true, upi: false, assisted: false, agent: false },
+            platform: { aws: false, azure: false, gcp: false, vsphere: true, baremetal: false, rhv: false },
+            network: { disconnected: false }
+        };
+
+        // --- Reusable Components ---
+        const Section = ({ title, defaultOpen = true, children, isVisible = true }) => {
+            const [isOpen, setIsOpen] = useState(defaultOpen);
+            if (!isVisible) return null;
+
+            return (
+                <div className="mb-6 border border-gray-200 rounded-lg shadow-sm bg-white overflow-hidden print:border-none print:shadow-none print:mb-8">
+                    <div 
+                        className="flex justify-between items-center p-4 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 print:bg-transparent print:border-b-2 print:border-black print:p-0 print:pb-2"
+                        onClick={() => setIsOpen(!isOpen)}
+                    >
+                        <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+                        <div className="text-gray-500 print:hidden">
+                            {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </div>
+                    </div>
+                    <div className={`p-4 print:!block ${isOpen ? 'block' : 'hidden'}`}>
+                        {children}
+                    </div>
+                </div>
+            );
+        };
+
+        const FormInput = ({ id, label, type = "text", value, onChange, placeholder, options = [] }) => {
+            const commonClasses = "w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-[#EE0000] focus:border-[#EE0000] outline-none transition-all print:border-0 print:border-b print:border-gray-800 print:rounded-none print:p-1 print:bg-transparent";
+
+            if (type === "select") {
+                return (
+                    <select id={id} value={value || ''} onChange={(e) => onChange(id, e.target.value)} className={commonClasses}>
+                        <option value="">-- Select --</option>
+                        {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                );
+            }
+
+            if (type === "checkbox") {
+                return (
+                    <div className="flex items-center space-x-2 print:space-x-4">
+                        <input 
+                            type="checkbox" 
+                            id={id} 
+                            checked={value || false} 
+                            onChange={(e) => onChange(id, e.target.checked)}
+                            className="w-5 h-5 text-[#EE0000] rounded focus:ring-[#EE0000] print:appearance-auto print:w-4 print:h-4"
+                        />
+                        <label htmlFor={id} className="text-gray-700 cursor-pointer print:text-black">{label}</label>
+                    </div>
+                );
+            }
+
+            if (type === "textarea") {
+                return (
+                    <textarea 
+                        id={id} 
+                        value={value || ''} 
+                        onChange={(e) => onChange(id, e.target.value)} 
+                        placeholder={placeholder} 
+                        rows={3}
+                        className={commonClasses} 
+                    />
+                );
+            }
+
+            return (
+                <input 
+                    type={type} 
+                    id={id} 
+                    value={value || ''} 
+                    onChange={(e) => onChange(id, e.target.value)} 
+                    placeholder={placeholder} 
+                    className={commonClasses} 
+                />
+            );
+        };
+
+        // --- Main Application ---
+        function App() {
+            const [filters, setFilters] = useState(DEFAULT_FILTERS);
+            const [formData, setFormData] = useState({});
+            const [saveStatus, setSaveStatus] = useState('');
+
+            // Load data from localStorage on mount
+            useEffect(() => {
+                const savedData = localStorage.getItem('ocpPrereqsData');
+                const savedFilters = localStorage.getItem('ocpPrereqsFilters');
+                
+                if (savedData) setFormData(JSON.parse(savedData));
+                if (savedFilters) setFilters(JSON.parse(savedFilters));
+            }, []);
+
+            // Save data to localStorage whenever it changes
+            useEffect(() => {
+                if (Object.keys(formData).length > 0 || filters !== DEFAULT_FILTERS) {
+                    localStorage.setItem('ocpPrereqsData', JSON.stringify(formData));
+                    localStorage.setItem('ocpPrereqsFilters', JSON.stringify(filters));
+                    
+                    setSaveStatus('Saved to browser');
+                    const timer = setTimeout(() => setSaveStatus(''), 2000);
+                    return () => clearTimeout(timer);
+                }
+            }, [formData, filters]);
+
+            const handleInputChange = (id, value) => {
+                setFormData(prev => ({ ...prev, [id]: value }));
+            };
+
+            const handleFilterChange = (category, item) => {
+                setFilters(prev => ({
+                    ...prev,
+                    [category]: {
+                        ...prev[category],
+                        [item]: !prev[category][item]
+                    }
+                }));
+            };
+
+            const clearData = () => {
+                if (window.confirm("Are you sure you want to clear all data? This cannot be undone.")) {
+                    setFormData({});
+                    setFilters(DEFAULT_FILTERS);
+                    localStorage.removeItem('ocpPrereqsData');
+                    localStorage.removeItem('ocpPrereqsFilters');
+                }
+            };
+
+            const printDocument = () => {
+                window.print();
+            };
+
+            const renderRow = (item, desc, inputId, type = "text", placeholder = "", options = []) => (
+                <tr key={inputId} className="border-b border-gray-100 last:border-0 print:border-gray-300">
+                    <td className="p-3 w-1/3 text-sm font-semibold text-gray-800 align-top print:p-2">{item}</td>
+                    <td className="p-3 w-1/3 text-sm text-gray-600 align-top print:p-2">{desc}</td>
+                    <td className="p-3 w-1/3 align-top print:p-2">
+                        <FormInput 
+                            id={inputId} 
+                            type={type} 
+                            value={formData[inputId]} 
+                            onChange={handleInputChange} 
+                            placeholder={placeholder}
+                            options={options}
+                        />
+                    </td>
+                </tr>
+            );
+
+            return (
+                <div className="min-h-screen font-sans text-gray-900 pb-20 print:bg-white print:pb-0">
+                    {/* Header */}
+                    <header className="bg-[#EE0000] text-white sticky top-0 z-50 shadow-md print:static print:shadow-none print:text-black print:border-b-4 print:border-black">
+                        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
+                            <div>
+                                <h1 className="text-2xl font-bold tracking-tight">OpenShift Container Platform POC</h1>
+                                <p className="text-red-100 text-sm print:text-gray-600">Prerequisite Checklist & Readiness Document</p>
+                            </div>
+                            
+                            <div className="flex items-center space-x-4 mt-4 md:mt-0 print:hidden">
+                                <span className="text-sm text-red-200 flex items-center min-w-[120px]">
+                                    {saveStatus && <><Save size={14} className="mr-1" /> {saveStatus}</>}
+                                </span>
+                                <button onClick={printDocument} className="flex items-center bg-white text-[#EE0000] px-4 py-2 rounded font-semibold hover:bg-gray-100 transition-colors shadow-sm">
+                                    <Printer size={18} className="mr-2" /> Print / PDF
+                                </button>
+                                <button onClick={clearData} className="flex items-center text-white bg-red-800 px-3 py-2 rounded hover:bg-red-900 transition-colors">
+                                    <Trash2 size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-6xl mx-auto px-4 py-8">
+                        {/* Intro Card */}
+                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8 print:border-none print:shadow-none print:p-0 print:mb-6">
+                            <h2 className="text-xl font-bold mb-4 flex items-center"><ShieldAlert className="text-[#EE0000] mr-2" /> Overview</h2>
+                            <p className="text-gray-700 leading-relaxed text-sm">
+                                This document lists the prerequisites needed for successful OpenShift Container Platform (OCP) 4 deployments. 
+                                Anything left incomplete from this guide relevant to the chosen installation type before the implementation team is on-site 
+                                will increase the time for delivery. Please fill out all required fields based on your selected architecture below.
+                            </p>
+                        </div>
+
+                        {/* Filters Panel - HIDDEN ON PRINT */}
+                        <div className="bg-gray-800 text-white p-6 rounded-lg shadow-md mb-8 print:hidden">
+                            <h2 className="text-lg font-bold mb-4 border-b border-gray-600 pb-2">Environment Configuration</h2>
+                            <p className="text-sm text-gray-300 mb-4">Select your target environment. Sections will appear or hide based on these selections.</p>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <h3 className="font-semibold text-gray-200 mb-2">Installation Type</h3>
+                                    <div className="space-y-2">
+                                        {Object.keys(filters.installType).map(type => (
+                                            <label key={type} className="flex items-center space-x-2 cursor-pointer">
+                                                <input type="checkbox" checked={filters.installType[type]} onChange={() => handleFilterChange('installType', type)} className="text-[#EE0000] focus:ring-[#EE0000] rounded" />
+                                                <span className="uppercase text-sm">{type}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <h3 className="font-semibold text-gray-200 mb-2">Cloud / Platform</h3>
+                                    <div className="space-y-2">
+                                        {Object.keys(filters.platform).map(plat => (
+                                            <label key={plat} className="flex items-center space-x-2 cursor-pointer">
+                                                <input type="checkbox" checked={filters.platform[plat]} onChange={() => handleFilterChange('platform', plat)} className="text-[#EE0000] focus:ring-[#EE0000] rounded" />
+                                                <span className="uppercase text-sm">{plat === 'vsphere' ? 'vSphere / VMware' : plat}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h3 className="font-semibold text-gray-200 mb-2">Network Environment</h3>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center space-x-2 cursor-pointer">
+                                            <input type="checkbox" checked={filters.network.disconnected} onChange={() => handleFilterChange('network', 'disconnected')} className="text-[#EE0000] focus:ring-[#EE0000] rounded" />
+                                            <span className="text-sm">Disconnected / Airgapped</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* --- FORM SECTIONS --- */}
+
+                        <Section title="1. Project & Cluster Details">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Item</th><th className="p-3 w-1/3">Description</th><th className="p-3 w-1/3">Customer Input</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("Customer Name", "Official company name", "proj_cust_name", "text", "e.g., Acme Corp")}
+                                    {renderRow("Cluster Name", "Short, unique name for the cluster", "proj_cluster_name", "text", "e.g., ocp-prod")}
+                                    {renderRow("Base Domain", "The DNS domain for the cluster", "proj_base_domain", "text", "e.g., example.com")}
+                                    {renderRow("OCP Version", "Target OpenShift Version", "proj_ocp_version", "select", "", ["4.12", "4.13", "4.14", "4.15", "4.16"])}
+                                    {renderRow("Pull Secret", "Red Hat Pull Secret ready?", "proj_pull_secret", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="2. Contacts">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Role</th><th className="p-3 w-1/3">Responsibility</th><th className="p-3 w-1/3">Name & Email</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("Red Hat Lead", "Primary RH contact (Architect/Tiger)", "contact_rh_lead", "textarea", "Name:\nEmail:")}
+                                    {renderRow("Customer Sponsor", "Project sponsor", "contact_cust_sponsor", "textarea", "Name:\nEmail:")}
+                                    {renderRow("Infrastructure Lead", "Compute/Storage SME", "contact_cust_infra", "textarea", "Name:\nEmail:")}
+                                    {renderRow("Network / DNS Lead", "Network firewall & DNS SME", "contact_cust_net", "textarea", "Name:\nEmail:")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="3. Node Sizing & Infrastructure">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Node Type</th><th className="p-3 w-1/3">Minimum Recommended</th><th className="p-3 w-1/3">Allocated Resources (CPU / RAM / Disk)</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("Bootstrap Node", "4 vCPU, 16GB RAM, 100GB Disk (Temporary)", "size_bootstrap", "text", "e.g., 4 vCPU / 16GB / 120GB")}
+                                    {renderRow("Control Plane (Master) 1", "8 vCPU, 32GB RAM, 120GB Disk (High IOPS)", "size_master_1")}
+                                    {renderRow("Control Plane (Master) 2", "8 vCPU, 32GB RAM, 120GB Disk (High IOPS)", "size_master_2")}
+                                    {renderRow("Control Plane (Master) 3", "8 vCPU, 32GB RAM, 120GB Disk (High IOPS)", "size_master_3")}
+                                    {renderRow("Compute (Worker) Nodes", "Minimum 2x: 4 vCPU, 16GB RAM, 120GB Disk", "size_workers", "textarea", "Node Count:\nSpecs per node:")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="4. Core Networking & VIPs">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Requirement</th><th className="p-3 w-1/3">Description</th><th className="p-3 w-1/3">Values / Implementation</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("Machine CIDR", "Subnet for the cluster nodes", "net_machine_cidr", "text", "e.g., 10.0.0.0/24")}
+                                    {renderRow("Pod CIDR", "Internal IP range for Pods (default: 10.128.0.0/14)", "net_pod_cidr", "text", "10.128.0.0/14")}
+                                    {renderRow("Service CIDR", "Internal IP range for Services (default: 172.30.0.0/16)", "net_svc_cidr", "text", "172.30.0.0/16")}
+                                    {renderRow("API VIP", "Load balancer IP for OpenShift API (6443)", "net_api_vip")}
+                                    {renderRow("Ingress VIP", "Load balancer IP for App router (80/443)", "net_ingress_vip")}
+                                    {renderRow("Internet Access", "Outbound access to quay.io, registry.redhat.io allowed?", "net_outbound_access", "checkbox", "Yes")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="5. DNS Requirements">
+                            <div className="mb-4 text-sm text-gray-700 bg-blue-50 p-3 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
+                                Note: All records must resolve both internally and from the deployment host. Format: <code>[record].[cluster_name].[base_domain]</code>
+                            </div>
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Record Name</th><th className="p-3 w-1/3">Target / Resolution</th><th className="p-3 w-1/3">Created & Tested?</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("api", "Points to API VIP. Used by users/tools.", "dns_api", "checkbox")}
+                                    {renderRow("api-int", "Points to API VIP. Used internally by nodes.", "dns_api_int", "checkbox")}
+                                    {renderRow("*.apps", "Wildcard pointing to Ingress VIP.", "dns_apps_wildcard", "checkbox")}
+                                    {(filters.installType.upi || filters.installType.baremetal) && 
+                                        renderRow("Bootstrap DNS", "Points to bootstrap node IP", "dns_bootstrap", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="6. Load Balancer Requirements" isVisible={filters.installType.upi || filters.installType.baremetal}>
+                            <div className="mb-4 text-sm text-gray-700 bg-yellow-50 p-3 rounded border border-yellow-100 print:bg-transparent print:border-none print:p-0">
+                                For UPI/Baremetal, you must provide external load balancing. TCP pass-through is required for 6443/22623.
+                            </div>
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Port & Protocol</th><th className="p-3 w-1/3">Backend Targets</th><th className="p-3 w-1/3">Configured?</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("TCP 6443 (API)", "Bootstrap, Masters (Control Plane)", "lb_6443", "checkbox")}
+                                    {renderRow("TCP 22623 (Machine Config)", "Bootstrap, Masters, Workers", "lb_22623", "checkbox")}
+                                    {renderRow("TCP 80 (HTTP Ingress)", "Workers (Infra nodes if separated)", "lb_80", "checkbox")}
+                                    {renderRow("TCP 443 (HTTPS Ingress)", "Workers (Infra nodes if separated)", "lb_443", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        {/* --- DYNAMIC CLOUD SECTIONS --- */}
+                        <Section title="Provider: VMware vSphere" isVisible={filters.platform.vsphere}>
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">vSphere Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("vCenter Server", "Hostname or IP", "vsphere_vcenter", "text")}
+                                    {renderRow("Datacenter Name", "Target datacenter in vSphere", "vsphere_datacenter", "text")}
+                                    {renderRow("Cluster Name", "Target compute cluster", "vsphere_cluster", "text")}
+                                    {renderRow("Datastore", "Shared datastore for nodes", "vsphere_datastore", "text")}
+                                    {renderRow("Network Name", "PortGroup / Network name", "vsphere_network", "text")}
+                                    {renderRow("Service Account", "Account with proper permissions (admin/custom)", "vsphere_user", "text", "user@vsphere.local")}
+                                    {renderRow("Hardware Version", "VM Hardware version >= 15", "vsphere_hw_version", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="Provider: AWS" isVisible={filters.platform.aws}>
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">AWS Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("AWS Region", "Target region for deployment", "aws_region", "text", "e.g., us-east-1")}
+                                    {renderRow("IAM User/Role", "AdministratorAccess or specific policy attached", "aws_iam", "checkbox")}
+                                    {renderRow("Route53 Public Zone", "Registered Domain in Route53?", "aws_route53", "checkbox")}
+                                    {renderRow("VPC Model", "New VPC or Existing VPC?", "aws_vpc_type", "select", "", ["Installer-provisioned (New)", "User-provisioned (Existing)"])}
+                                    {renderRow("Service Quotas", "Verified EC2, VPC, ELB quotas?", "aws_quotas", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="Provider: Azure" isVisible={filters.platform.azure}>
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Azure Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("Azure Region", "Target region", "azure_region", "text")}
+                                    {renderRow("Subscription ID", "Target subscription", "azure_sub", "text")}
+                                    {renderRow("Service Principal", "App registration with Contributor & User Access Administrator", "azure_sp", "checkbox")}
+                                    {renderRow("Public DNS Zone", "Azure DNS Zone created?", "azure_dns", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="Provider: Bare Metal" isVisible={filters.platform.baremetal}>
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Bare Metal Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("BMC / IPMI Access", "Network access to node Baseboard Management Controllers", "bm_bmc", "checkbox")}
+                                    {renderRow("PXE/DHCP Network", "Provisioning network setup for PXE boot?", "bm_pxe", "checkbox")}
+                                    {renderRow("Static IP Assignments", "MAC addresses mapped to static IPs?", "bm_static", "checkbox")}
+                                    {renderRow("Storage (LUNs/Disks)", "Local disks wiped and ready for CoreOS?", "bm_disks", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        <Section title="7. Disconnected / Restricted Network" isVisible={filters.network.disconnected}>
+                            <div className="mb-4 text-sm text-gray-700 bg-red-50 p-3 rounded border border-red-100 print:bg-transparent print:border-none print:p-0">
+                                Requires a local container registry. Provide details below.
+                            </div>
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Requirement</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value / Configured?</th></tr>
+                                </thead>
+                                <tbody>
+                                    {renderRow("Mirror Registry FQDN", "URL of the local registry (e.g. Quay, Nexus, Artifactory)", "disc_registry_fqdn", "text")}
+                                    {renderRow("Registry Port", "Usually 443 or 8443", "disc_registry_port", "text")}
+                                    {renderRow("Registry Certs", "CA certificate for the registry available?", "disc_registry_cert", "checkbox")}
+                                    {renderRow("Mirrored Content", "OCP release payload and operators mirrored?", "disc_mirrored", "checkbox")}
+                                </tbody>
+                            </table>
+                        </Section>
+
+                        {/* --- APPENDIX --- */}
+                        <Section title="Appendix: Architecture Diagrams" defaultOpen={true}>
+                            <p className="text-sm text-gray-600 mb-6 print:mb-4">
+                                Placeholders for final network and architecture diagrams.
+                            </p>
+                            <div className="grid md:grid-cols-2 gap-8 print:block">
+                                <div className="print:mb-8">
+                                    <h3 className="font-semibold mb-2">Network Topology</h3>
+                                    <div className="border-2 border-dashed border-gray-300 rounded-lg h-64 flex items-center justify-center bg-gray-50 text-gray-400 print:border-solid print:border-black print:h-80">
+                                        [ Insert Network Diagram Here ]
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <h3 className="font-semibold mb-2">Ports and Protocols</h3>
+                                    <div className="border-2 border-dashed border-gray-300 rounded-lg h-64 flex items-center justify-center bg-gray-50 text-gray-400 print:border-solid print:border-black print:h-80">
+                                        [ Insert Ports/Flow Diagram Here ]
+                                    </div>
+                                </div>
+                            </div>
+                        </Section>
+
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
