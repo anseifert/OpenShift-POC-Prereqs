@@ -1,0 +1,1 @@
+OpenShift Infrastructure Readiness Page
