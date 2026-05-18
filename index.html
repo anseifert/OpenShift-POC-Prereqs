@@ -56,12 +56,12 @@
         };
 
         // --- Reusable Components ---
-        const Section = ({ title, defaultOpen = true, children, isVisible = true }) => {
+        const Section = ({ title, defaultOpen = true, children, isVisible = true, showInPrint = true }) => {
             const [isOpen, setIsOpen] = useState(defaultOpen);
             if (!isVisible) return null;
 
             return (
-                <div className="mb-6 border border-gray-200 rounded-lg shadow-sm bg-white overflow-hidden print:border-none print:shadow-none print:mb-8">
+                <div className={`mb-6 border border-gray-200 rounded-lg shadow-sm bg-white overflow-hidden print:border-none print:shadow-none print:mb-8 ${!showInPrint ? 'print:hidden' : ''}`}>
                     <div 
                         className="flex justify-between items-center p-4 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 print:bg-transparent print:border-b-2 print:border-black print:p-0 print:pb-2"
                         onClick={() => setIsOpen(!isOpen)}
@@ -180,26 +180,59 @@
                 }
             };
 
+            const hasFilledValue = (id, type = 'text') => {
+                const value = formData[id];
+                if (type === 'checkbox') return value === true;
+                return value !== undefined && value !== null && String(value).trim() !== '';
+            };
+
+            const sectionHasPrintContent = (fields) =>
+                fields.some(([id, type = 'text']) => hasFilledValue(id, type));
+
             const printDocument = () => {
                 window.print();
             };
 
-            const renderRow = (item, desc, inputId, type = "text", placeholder = "", options = []) => (
-                <tr key={inputId} className="border-b border-gray-100 last:border-0 print:border-gray-300">
+            const formatPrintValue = (id, type) => {
+                const value = formData[id];
+                if (type === 'checkbox') return value ? 'Yes' : '';
+                return String(value ?? '').trim();
+            };
+
+            const renderRow = (item, desc, inputId, type = "text", placeholder = "", options = []) => {
+                const filled = hasFilledValue(inputId, type);
+                return (
+                <tr key={inputId} className={`border-b border-gray-100 last:border-0 print:border-gray-300 ${!filled ? 'print:hidden' : ''}`}>
                     <td className="p-3 w-1/3 text-sm font-semibold text-gray-800 align-top print:p-2">{item}</td>
                     <td className="p-3 w-1/3 text-sm text-gray-600 align-top print:p-2">{desc}</td>
                     <td className="p-3 w-1/3 align-top print:p-2">
-                        <FormInput 
-                            id={inputId} 
-                            type={type} 
-                            value={formData[inputId]} 
-                            onChange={handleInputChange} 
-                            placeholder={placeholder}
-                            options={options}
-                        />
+                        <span className="hidden print:inline text-sm text-gray-900 whitespace-pre-wrap">{formatPrintValue(inputId, type)}</span>
+                        <div className="print:hidden">
+                            <FormInput 
+                                id={inputId} 
+                                type={type} 
+                                value={formData[inputId]} 
+                                onChange={handleInputChange} 
+                                placeholder={placeholder}
+                                options={options}
+                            />
+                        </div>
                     </td>
                 </tr>
             );
+            };
+
+            const PROJECT_FIELDS = [['proj_cust_name','text'],['proj_cluster_name','text'],['proj_base_domain','text'],['proj_ocp_version','select'],['proj_pull_secret','checkbox']];
+            const CONTACT_FIELDS = [['contact_rh_lead','textarea'],['contact_cust_sponsor','textarea'],['contact_cust_infra','textarea'],['contact_cust_net','textarea']];
+            const SIZING_FIELDS = [['size_bootstrap','text'],['size_master_1','text'],['size_master_2','text'],['size_master_3','text'],['size_workers','textarea']];
+            const NETWORK_FIELDS = [['net_machine_cidr','text'],['net_pod_cidr','text'],['net_svc_cidr','text'],['net_api_vip','text'],['net_ingress_vip','text'],['net_outbound_access','checkbox']];
+            const DNS_FIELDS = [['dns_api','checkbox'],['dns_api_int','checkbox'],['dns_apps_wildcard','checkbox'],['dns_bootstrap','checkbox']];
+            const LB_FIELDS = [['lb_6443','checkbox'],['lb_22623','checkbox'],['lb_80','checkbox'],['lb_443','checkbox']];
+            const VSPHERE_FIELDS = [['vsphere_vcenter','text'],['vsphere_datacenter','text'],['vsphere_cluster','text'],['vsphere_datastore','text'],['vsphere_network','text'],['vsphere_user','text'],['vsphere_hw_version','checkbox']];
+            const AWS_FIELDS = [['aws_region','text'],['aws_iam','checkbox'],['aws_route53','checkbox'],['aws_vpc_type','select'],['aws_quotas','checkbox']];
+            const AZURE_FIELDS = [['azure_region','text'],['azure_sub','text'],['azure_sp','checkbox'],['azure_dns','checkbox']];
+            const BAREMETAL_FIELDS = [['bm_bmc','checkbox'],['bm_pxe','checkbox'],['bm_static','checkbox'],['bm_disks','checkbox']];
+            const DISCONNECTED_FIELDS = [['disc_registry_fqdn','text'],['disc_registry_port','text'],['disc_registry_cert','checkbox'],['disc_mirrored','checkbox']];
 
             return (
                 <div className="min-h-screen font-sans text-gray-900 pb-20 print:bg-white print:pb-0">
@@ -227,7 +260,7 @@
 
                     <main className="max-w-6xl mx-auto px-4 py-8">
                         {/* Intro Card */}
-                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8 print:border-none print:shadow-none print:p-0 print:mb-6">
+                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8 print:hidden">
                             <h2 className="text-xl font-bold mb-4 flex items-center"><ShieldAlert className="text-[#EE0000] mr-2" /> Overview</h2>
                             <p className="text-gray-700 leading-relaxed text-sm">
                                 This document lists the prerequisites needed for successful OpenShift Container Platform (OCP) 4 deployments. 
@@ -280,7 +313,7 @@
 
                         {/* --- FORM SECTIONS --- */}
 
-                        <Section title="1. Project & Cluster Details">
+                        <Section title="1. Project & Cluster Details" showInPrint={sectionHasPrintContent(PROJECT_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Item</th><th className="p-3 w-1/3">Description</th><th className="p-3 w-1/3">Customer Input</th></tr>
@@ -295,7 +328,7 @@
                             </table>
                         </Section>
 
-                        <Section title="2. Contacts">
+                        <Section title="2. Contacts" showInPrint={sectionHasPrintContent(CONTACT_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Role</th><th className="p-3 w-1/3">Responsibility</th><th className="p-3 w-1/3">Name & Email</th></tr>
@@ -310,7 +343,7 @@
                             </table>
                         </Section>
 
-                        <Section title="3. Node Sizing & Infrastructure">
+                        <Section title="3. Node Sizing & Infrastructure" showInPrint={sectionHasPrintContent(SIZING_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Node Type</th><th className="p-3 w-1/3">Minimum Recommended</th><th className="p-3 w-1/3">Allocated Resources (CPU / RAM / Disk)</th></tr>
@@ -325,7 +358,7 @@
                             </table>
                         </Section>
 
-                        <Section title="4. Core Networking & VIPs">
+                        <Section title="4. Core Networking & VIPs" showInPrint={sectionHasPrintContent(NETWORK_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Requirement</th><th className="p-3 w-1/3">Description</th><th className="p-3 w-1/3">Values / Implementation</th></tr>
@@ -341,8 +374,8 @@
                             </table>
                         </Section>
 
-                        <Section title="5. DNS Requirements">
-                            <div className="mb-4 text-sm text-gray-700 bg-blue-50 p-3 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
+                        <Section title="5. DNS Requirements" showInPrint={sectionHasPrintContent(DNS_FIELDS)}>
+                            <div className="mb-4 text-sm text-gray-700 bg-blue-50 p-3 rounded border border-blue-100 print:hidden">
                                 Note: All records must resolve both internally and from the deployment host. Format: <code>[record].[cluster_name].[base_domain]</code>
                             </div>
                             <table className="w-full text-left">
@@ -359,8 +392,8 @@
                             </table>
                         </Section>
 
-                        <Section title="6. Load Balancer Requirements" isVisible={filters.installType.upi || filters.installType.baremetal}>
-                            <div className="mb-4 text-sm text-gray-700 bg-yellow-50 p-3 rounded border border-yellow-100 print:bg-transparent print:border-none print:p-0">
+                        <Section title="6. Load Balancer Requirements" isVisible={filters.installType.upi || filters.installType.baremetal} showInPrint={sectionHasPrintContent(LB_FIELDS)}>
+                            <div className="mb-4 text-sm text-gray-700 bg-yellow-50 p-3 rounded border border-yellow-100 print:hidden">
                                 For UPI/Baremetal, you must provide external load balancing. TCP pass-through is required for 6443/22623.
                             </div>
                             <table className="w-full text-left">
@@ -377,7 +410,7 @@
                         </Section>
 
                         {/* --- DYNAMIC CLOUD SECTIONS --- */}
-                        <Section title="Provider: VMware vSphere" isVisible={filters.platform.vsphere}>
+                        <Section title="Provider: VMware vSphere" isVisible={filters.platform.vsphere} showInPrint={sectionHasPrintContent(VSPHERE_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">vSphere Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
@@ -394,7 +427,7 @@
                             </table>
                         </Section>
 
-                        <Section title="Provider: AWS" isVisible={filters.platform.aws}>
+                        <Section title="Provider: AWS" isVisible={filters.platform.aws} showInPrint={sectionHasPrintContent(AWS_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">AWS Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
@@ -409,7 +442,7 @@
                             </table>
                         </Section>
 
-                        <Section title="Provider: Azure" isVisible={filters.platform.azure}>
+                        <Section title="Provider: Azure" isVisible={filters.platform.azure} showInPrint={sectionHasPrintContent(AZURE_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Azure Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
@@ -423,7 +456,7 @@
                             </table>
                         </Section>
 
-                        <Section title="Provider: Bare Metal" isVisible={filters.platform.baremetal}>
+                        <Section title="Provider: Bare Metal" isVisible={filters.platform.baremetal} showInPrint={sectionHasPrintContent(BAREMETAL_FIELDS)}>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-gray-100 print:bg-gray-200"><th className="p-3 w-1/3">Bare Metal Prerequisite</th><th className="p-3 w-1/3">Details</th><th className="p-3 w-1/3">Value provided</th></tr>
@@ -437,8 +470,8 @@
                             </table>
                         </Section>
 
-                        <Section title="7. Disconnected / Restricted Network" isVisible={filters.network.disconnected}>
-                            <div className="mb-4 text-sm text-gray-700 bg-red-50 p-3 rounded border border-red-100 print:bg-transparent print:border-none print:p-0">
+                        <Section title="7. Disconnected / Restricted Network" isVisible={filters.network.disconnected} showInPrint={sectionHasPrintContent(DISCONNECTED_FIELDS)}>
+                            <div className="mb-4 text-sm text-gray-700 bg-red-50 p-3 rounded border border-red-100 print:hidden">
                                 Requires a local container registry. Provide details below.
                             </div>
                             <table className="w-full text-left">
@@ -455,7 +488,7 @@
                         </Section>
 
                         {/* --- APPENDIX --- */}
-                        <Section title="Appendix: Architecture Diagrams" defaultOpen={true}>
+                        <Section title="Appendix: Architecture Diagrams" defaultOpen={true} showInPrint={false}>
                             <p className="text-sm text-gray-600 mb-6 print:mb-4">
                                 Placeholders for final network and architecture diagrams.
                             </p>
